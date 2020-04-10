@@ -1,0 +1,281 @@
+---
+title: "vis pro"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+```
+
+
+
+```{r}
+offline<- read.csv("ccf_offline_stage1_train/ccf_offline_stage1_train.csv")
+online<- read.csv("ccf_online_stage1_train/ccf_online_stage1_train.csv")
+```
+
+
+```{r}
+#Change data format to date
+offline$Date_received <- as.Date(offline[["Date_received"]], "%Y%m%d")
+offline$Date <- as.Date(offline[["Date"]], "%Y%m%d")
+
+online$Date_received <- as.Date(online[["Date_received"]], "%Y%m%d")
+online$Date <- as.Date(online[["Date"]], "%Y%m%d")
+
+offline$Distance<-as.integer(offline[["Distance"]])
+
+```
+
+------------------------------------------------------
+```{r}
+
+  ###############################
+  #data processing
+  #offline without coupon/with
+  #offwoc<-filter(offline,!is.na(offline$Date)&offline$Coupon_id=="null")
+  #offwc<-filter(offline,!is.na(offline$Date)&offline$Coupon_id!="null")
+  #online
+  #onwoc<-filter(online,!is.na(online$Date)&online$Coupon_id=="null")
+  #onwc<-filter(online,!is.na(online$Date)&online$Coupon_id!="null")
+
+```
+
+
+```{r}
+#top n (offline filter distance)
+
+#input  n: top n
+#       linetype:"offline"/"online"
+#       rof :"freq" / "ratioiss"(usage/issue) / "ratioconsum" (usage/consumption)
+#       distance: two side list (offline only)
+
+
+topn<- function(n=5,linetype="offline",rof="freq",dist=c(0,10)){
+
+  #########calculating part
+  #basic para
+  resn<-list(1:n)
+  resp<-ggplot()
+  
+  
+  #judge linetype first
+  #offline part
+  if (linetype=="offline") {
+    
+    #need to consider distance
+    offwc<-filter(offline,!is.na(offline$Date) & offline$Coupon_id!="null" & offline$Distance>=dist[1] & offline$Distance<=dist[2])##distance filter
+    
+    #Aggregate merchant_id and order data
+    offwc<-offwc %>%
+      group_by(offwc$Merchant_id)%>%
+      summarise(times=n()) %>%
+      arrange(desc(times)) 
+    
+    #rof="freq"
+    if (rof=="freq") {
+
+      topndata <- offwc[1:n,]
+      resx<-as.list(topndata[,"offwc$Merchant_id"])
+      resy<-as.list(topndata[,"times"])    
+    
+    }
+    
+    #rof="ratioiss"    
+    else if(rof=="ratioiss"){
+      #not use
+      offnu<-filter(offline,is.na(offline$Date) & offline$Coupon_id!="null" & offline$Distance>=dist[1] & offline$Distance<=dist[2])##distance filter  
+      #Aggregate merchant_id and order data
+      offnu<-offnu %>%
+        group_by(offnu$Merchant_id)%>%
+        summarise(nutimes=n()) %>%
+        arrange(desc(nutimes))
+      
+      #join two tables and calculate ratio then order data
+      offnu<-left_join(offwc,offnu,by=c("offwc$Merchant_id"="offnu$Merchant_id"))   
+      names(offnu)<-c("Merchant_id","times","nutimes")
+      
+      offnu$ratioiss<-offnu$times/offnu$nutimes
+      offnu<-offnu  %>%
+          arrange(desc(ratioiss))
+      
+      topndata <- offnu[1:n,]
+      resx<-as.list(topndata[,"Merchant_id"])
+      resy<-as.list(topndata[,"ratioiss"])  
+
+      
+      
+      
+    }
+    #rof="ratioconsum"     
+    else if (rof=="ratioconsum") {
+      #consumed but not use
+      offcbnu<-filter(offline,!is.na(offline$Date) & offline$Coupon_id=="null" & offline$Distance>=dist[1] & offline$Distance<=dist[2])##distance filter  
+      #Aggregate merchant_id and order data
+      offcbnu<-offcbnu %>%
+        group_by(offcbnu$Merchant_id)%>%
+        summarise(cbnutimes=n()) %>%
+        arrange(desc(cbnutimes))
+      
+      #join two tables and calculate ratio then order data
+      offcbnu<-left_join(offwc,offcbnu,by=c("offwc$Merchant_id"="offcbnu$Merchant_id"))   
+      names(offcbnu)<-c("Merchant_id","times","cbnutimes")
+      
+      offcbnu$ratioconsum<-offcbnu$times/offcbnu$cbnutimes
+      offcbnu<-offcbnu  %>%
+          arrange(desc(ratioconsum))
+      
+      topndata <- offcbnu[1:n,]
+      resx<-as.list(topndata[,"Merchant_id"])
+      resy<-as.list(topndata[,"ratioconsum"]) 
+    }
+    else{
+      return(resp)
+    }
+    
+  }
+  
+  #online part
+  else{
+    onwc<-filter(online,!is.na(online$Date) & online$Coupon_id!="null") 
+    #Aggregate merchant_id and order data
+    onwc<-onwc %>%
+      group_by(onwc$Merchant_id)%>%
+      summarise(times=n()) %>%
+      arrange(desc(times)) 
+    
+    #rof="freq"
+    if (rof=="freq") {
+
+      topndata <- onwc[1:n,]
+      resx<-as.list(topndata[,"onwc$Merchant_id"])
+      resy<-as.list(topndata[,"times"]) 
+      
+    }
+    
+    #rof="ratioiss"    
+    else if(rof=="ratioiss"){
+      #not use
+      onnu<-filter(online,is.na(online$Date) & online$Coupon_id!="null")
+      #Aggregate merchant_id and order data
+      onnu<-onnu %>%
+        group_by(onnu$Merchant_id)%>%
+        summarise(nutimes=n()) %>%
+        arrange(desc(nutimes))
+      
+      #join two tables and calculate ratio then order data
+      onnu<-left_join(onwc,onnu,by=c("onwc$Merchant_id"="onnu$Merchant_id"))   
+      names(onnu)<-c("Merchant_id","times","nutimes")
+      
+      onnu$ratioiss<-onnu$times/onnu$nutimes
+      onnu<-onnu  %>%
+          arrange(desc(ratioiss))
+      
+      topndata <- offnu[1:n,]
+      resx<-as.list(topndata[,"Merchant_id"])
+      resy<-as.list(topndata[,"ratioiss"])  
+      
+    }
+    
+    #rof="ratioconsum"     
+    else if (rof=="ratioconsum") {
+      #consumed but not use
+      oncbnu<-filter(online,!is.na(online$Date) & online$Coupon_id=="null" ) 
+      #Aggregate merchant_id and order data
+      oncbnu<-oncbnu %>%
+        group_by(oncbnu$Merchant_id)%>%
+        summarise(cbnutimes=n()) %>%
+        arrange(desc(cbnutimes))
+      
+      #join two tables and calculate ratio then order data
+      oncbnu<-left_join(onwc,oncbnu,by=c("onwc$Merchant_id"="oncbnu$Merchant_id"))   
+      names(oncbnu)<-c("Merchant_id","times","cbnutimes")
+      
+      oncbnu$ratioconsum<-oncbnu$times/oncbnu$cbnutimes
+      oncbnu<-oncbnu  %>%
+          arrange(desc(ratioconsum))
+      
+      topndata <- oncbnu[1:n,]
+      resx<-as.list(topndata[,"Merchant_id"])
+      resy<-as.list(topndata[,"ratioconsum"]) 
+
+      
+    }
+    else{
+      return(resp)
+    }
+
+  }
+  #######calculating part end
+  
+  #######output part
+  #out put a dataframe  
+  res<-data.frame(resn,resx,resy)
+  names(res) <- c("resn","resx","resy")
+  
+  #out put a plot
+  resp<-resp+
+    geom_bar(data = res,aes(x=resn,y=resy,fill=factor(resx)),stat="identity")+
+    xlab("Merchant_id")+
+    theme_bw()+
+    theme(legend.position = "none")+
+    scale_x_continuous(breaks=res$resn,labels = res$resx)
+    #rof="ratio" part 2
+    if (rof=="ratioiss") {
+      resp<- resp +
+        ylab("Coupon useage/Coupon issuance ratio")
+    }
+    else if (rof=="ratioconsum") {
+      resp<- resp +
+        ylab("Coupon useage/Consumption ratio")
+    }
+    else if (rof=="freq") {
+      resp<- resp +
+        ylab("Coupon useage times")
+    }
+    else{
+      return(resp)
+    }
+  
+  return(resp)
+  
+}
+
+topn(n=20,linetype = "online",rof="ratioconsum")
+
+
+
+
+
+```
+```{r}
+    #need to consider distance
+    offwc<-filter(offline,!is.na(offline$Date) & offline$Coupon_id!="null" & offline$Distance>=dist[1] & offline$Distance<=dist[2])##distance filter
+    offwc<-offwc %>%
+      group_by(offwc$Merchant_id)%>%
+      summarise(times=n()) %>%
+      arrange(desc(times)) 
+    
+    #consumed but not use
+      offcbnu<-filter(offline,!is.na(offline$Date) & offline$Coupon_id=="null" & offline$Distance>=dist[1] & offline$Distance<=dist[2])##distance filter  
+      #Aggregate merchant_id and order data
+      offcbnu<-offcbnu %>%
+        group_by(offcbnu$Merchant_id)%>%
+        summarise(cbnutimes=n()) %>%
+        arrange(desc(cbnutimes))
+      
+      #join two tables and calculate ratio then order data
+      offcbnu<-left_join(offwc,offcbnu,by=c("offwc$Merchant_id"="offcbnu$Merchant_id"))   
+      names(offcbnu)<-c("Merchant_id","times","cbnutimes")
+      
+      offcbnu$ratioconsum<-offcbnu$times/offcbnu$cbnutimes
+      offcbnu<-offcbnu  %>%
+          arrange(desc(ratioconsum))
+
+offcbnu
+```
+
